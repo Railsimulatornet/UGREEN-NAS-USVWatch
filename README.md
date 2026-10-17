@@ -144,7 +144,7 @@ python3 usvwatch.py --env /pfad/zur/usvwatch.env --test-mail
 - `SMTP_HOST=`
 - `SMTP_PORT=587`
 - `SMTP_TLS=starttls`  
-  Mögliche Werte: `starttls`, `ssl`, `none`
+  Mögliche Werte: `starttls`, `ssl`, `none`. Andere Werte werden vor dem SMTP-Verbindungsaufbau als Konfigurationsfehler abgewiesen.
 - `SMTP_TLS_VERIFY=1`
 - `SMTP_USER=`
 - `SMTP_PASS=`

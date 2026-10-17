@@ -471,6 +471,10 @@ def send_mail(
 ) -> None:
     import smtplib
 
+    tls = smtp_tls.strip().lower()
+    if tls not in ("starttls", "ssl", "none"):
+        raise ValueError("SMTP_TLS must be one of: starttls, ssl, none.")
+
     msg = EmailMessage()
     msg["Subject"] = _truncate_subject(subject, 64)
     msg["From"] = smtp_from
@@ -486,7 +490,6 @@ def send_mail(
     def mk_ctx() -> ssl.SSLContext:
         return ssl.create_default_context() if tls_verify else ssl._create_unverified_context()  # noqa: SLF001
 
-    tls = smtp_tls.lower()
     if tls == "starttls":
         with smtplib.SMTP(smtp_host, smtp_port, timeout=smtp_timeout) as s:
             s.ehlo()
@@ -501,7 +504,7 @@ def send_mail(
             if smtp_user:
                 s.login(smtp_user, smtp_pass)
             s.send_message(msg, from_addr=smtp_from, to_addrs=recipients)
-    else:
+    elif tls == "none":
         with smtplib.SMTP(smtp_host, smtp_port, timeout=smtp_timeout) as s:
             s.ehlo()
             if smtp_user:
