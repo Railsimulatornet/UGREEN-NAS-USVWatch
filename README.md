@@ -1,4 +1,7 @@
 # UGREEN NAS USVWatch
+
+[![Python](https://github.com/Railsimulatornet/UGREEN-NAS-USVWatch/actions/workflows/python-checks.yml/badge.svg?branch=main)](https://github.com/Railsimulatornet/UGREEN-NAS-USVWatch/actions/workflows/python-checks.yml)
+
 ![USVWatch](Screens/USVWatch.png)
 
 USVWatch ist ein leichtgewichtiges Monitoring-Skript für UGREEN NAS mit UGOS Pro.
@@ -201,7 +204,7 @@ Das Loop-Skript unterstützt folgende Aufrufe:
 ./usvwatch-loop.sh tail
 ```
 
-Wichtig: In der ursprünglich hochgeladenen Version war `restart` defekt, weil `stop()` das Skript sofort mit `exit 0` beendet hat. Dadurch wurde `start()` bei `restart` nie mehr erreicht. Verwende deshalb die unten verlinkte überarbeitete Version von `usvwatch-loop.sh`.
+Wichtig: In der ursprünglich hochgeladenen Version war `restart` defekt, weil `stop()` das Skript sofort mit `exit 0` beendet hat. Dadurch wurde `start()` bei `restart` nie mehr erreicht. Verwende deshalb die aktuelle [usvwatch-loop.sh](usvwatch/usvwatch-loop.sh) mit der Restart-Korrektur.
 
 ## Dokumentation
 
