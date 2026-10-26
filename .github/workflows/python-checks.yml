@@ -3,10 +3,10 @@ name: Python checks
 on:
   push:
     branches: [main]
-    paths: ['usvwatch/**', 'tests/**', '.github/workflows/python-checks.yml']
+    paths: ['usvwatch/**', 'tests/**', '.github/workflows/python-checks.yml', '.github/dependabot.yml']
   pull_request:
     branches: [main]
-    paths: ['usvwatch/**', 'tests/**', '.github/workflows/python-checks.yml']
+    paths: ['usvwatch/**', 'tests/**', '.github/workflows/python-checks.yml', '.github/dependabot.yml']
   workflow_dispatch:
 
 permissions:
