@@ -148,7 +148,7 @@ STATUS_FLAG_MAP = {
     "OL": {"de": "Netzbetrieb", "en": "On line"},
     "OB": {"de": "Batteriebetrieb", "en": "On battery"},
     "LB": {"de": "Batterie schwach", "en": "Low battery"},
-    "RB": {"de": "Batterie wird wieder geladen", "en": "Battery is recharging"},
+    "RB": {"de": "Batterie ersetzen", "en": "Replace battery"},
     "CHRG": {"de": "Batterie lädt", "en": "Charging"},
     "DISCHRG": {"de": "Batterie entlädt", "en": "Discharging"},
     "BYPASS": {"de": "Bypass aktiv", "en": "Bypass active"},
@@ -733,7 +733,7 @@ def nut_select_ups() -> Tuple[str, str]:
                     ups_name, ups_desc = n, d
                     break
             if not ups_name:
-                ups_name, ups_desc = ups_list[0]
+                raise NutClientError("Configured UPS name not found in NUT device list.")
         else:
             ups_name, ups_desc = ups_list[0]
 
@@ -764,11 +764,11 @@ def nut_run_cmd(ups_name: str, cmd: str) -> str:
 
 
 def should_send_resend(last_sent_iso: Optional[str], resend_minutes: int) -> bool:
-    if resend_minutes <= 0:
-        return False
     last = _iso_to_dt(last_sent_iso)
     if not last:
         return True
+    if resend_minutes <= 0:
+        return False
     return (_now_local() - last) >= _dt.timedelta(minutes=resend_minutes)
 
 
@@ -964,7 +964,11 @@ def main() -> int:
     # Unreachable handling
     last_reachable = bool(state.get("last_reachable", True))
     if not reachable:
+        if last_reachable:
+            # A new outage needs its own first notification, even with repeats disabled.
+            state["last_unreachable_sent"] = None
         state["last_reachable"] = False
+        state["pending_recovered"] = False
         state["last_unreachable_error"] = nut_error
         if alert_unreachable and (last_reachable or should_send_resend(state.get("last_unreachable_sent"), unreachable_resend_min)):
             try:
@@ -975,14 +979,21 @@ def main() -> int:
         save_state(state_file, state)
         return 1
 
+    # Observed state and pending delivery are independent: a failed recovery
+    # message must not hide a later, separate outage.
+    state["last_reachable"] = True
     # Recovered mail
-    if (not last_reachable) and alert_recovered:
+    if alert_recovered and (not last_reachable or state.get("pending_recovered", False)):
         try:
             do_send(_truncate_subject(t["recovered_subject"]), t["event_recovered"])
         except Exception as e:
             print(f"WARN: Mail send failed (recovered): {e}", file=sys.stderr)
-        state["last_unreachable_sent"] = None
-    state["last_reachable"] = True
+            state["pending_recovered"] = True
+        else:
+            state["pending_recovered"] = False
+            state["last_unreachable_sent"] = None
+    elif not alert_recovered:
+        state["pending_recovered"] = False
 
     ups_status = vars_.get("ups.status", "")
     flags = set((ups_status or "").split())
@@ -993,34 +1004,55 @@ def main() -> int:
     prev_lb = bool(state.get("prev_lb", False))
     curr_lb = "LB" in flags
 
-    if alert_on_battery and curr_ob and not prev_ob:
+    state["prev_ob"] = curr_ob
+    state["prev_lb"] = curr_lb
+
+    if not curr_ob or not alert_on_battery:
+        state["pending_on_battery"] = False
+    if curr_ob or not alert_back_online:
+        state["pending_back_online"] = False
+    if not curr_lb or not alert_low_battery:
+        state["pending_low_battery"] = False
+
+    if alert_on_battery and curr_ob and (not prev_ob or state.get("pending_on_battery", False)):
         try:
             do_send(_truncate_subject(t["on_battery_subject"]), t["event_on_battery"])
             state["last_on_battery_sent"] = _dt_to_iso(now)
+            state["pending_on_battery"] = False
         except Exception as e:
             print(f"WARN: Mail send failed (on battery): {e}", file=sys.stderr)
+            state["pending_on_battery"] = True
 
-    if alert_back_online and prev_ob and not curr_ob:
+    if alert_back_online and not curr_ob and (prev_ob or state.get("pending_back_online", False)):
         try:
             do_send(_truncate_subject(t["back_online_subject"]), t["event_back_online"])
             state["last_back_online_sent"] = _dt_to_iso(now)
+            state["pending_back_online"] = False
         except Exception as e:
             print(f"WARN: Mail send failed (back online): {e}", file=sys.stderr)
+            state["pending_back_online"] = True
 
-    if alert_low_battery and curr_lb and not prev_lb:
+    if alert_low_battery and curr_lb and (not prev_lb or state.get("pending_low_battery", False)):
         try:
             do_send(_truncate_subject(t["low_batt_subject"]), t["event_low_battery"])
             state["last_low_battery_sent"] = _dt_to_iso(now)
+            state["pending_low_battery"] = False
         except Exception as e:
             print(f"WARN: Mail send failed (low battery): {e}", file=sys.stderr)
+            state["pending_low_battery"] = True
 
-    state["prev_ob"] = curr_ob
-    state["prev_lb"] = curr_lb
     state["last_status_raw"] = ups_status
 
     charge = _safe_float(vars_.get("battery.charge"))
     runtime_sec = _safe_int(vars_.get("battery.runtime"))
     runtime_min = int(runtime_sec / 60) if runtime_sec is not None else None
+
+    # Only a confirmed normal reading ends a threshold incident. Missing values
+    # must not rearm first notifications for an unchanged low reading.
+    if charge is not None and charge > charge_threshold:
+        state["last_charge_alert_sent"] = None
+    if runtime_min is not None and runtime_min > runtime_threshold:
+        state["last_runtime_alert_sent"] = None
 
     if alert_charge_low and (charge is not None) and (charge_threshold > 0) and (charge <= charge_threshold):
         if should_send_resend(state.get("last_charge_alert_sent"), resend_threshold_min):
